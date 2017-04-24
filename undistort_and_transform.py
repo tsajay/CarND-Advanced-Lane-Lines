@@ -1,4 +1,3 @@
-import pickle
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,9 +5,6 @@ import matplotlib.image as mpimg
 
 # Read in the saved camera matrix and distortion coefficients
 # These are the arrays you calculated using cv2.calibrateCamera()
-dist_pickle = pickle.load( open( "wide_dist_pickle.p", "rb" ) )
-mtx = dist_pickle["mtx"]
-dist = dist_pickle["dist"]
 
 # Read in an image
 img = cv2.imread('test_image2.png')
