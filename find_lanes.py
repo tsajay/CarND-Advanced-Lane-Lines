@@ -187,7 +187,7 @@ def draw_lines(img, lines, color=[0, 0, 255], thickness=2):
                     (int(img.shape[0] * 0.62), right_top_x), # right-top
                     (img.shape[0], right_bottom_x)] # right-bottom   
 
-    poly_to_ret = [poly_to_ret[1], poly_to_ret[2], poly_to_ret[0], poly_to_ret[3]]
+    poly_to_ret = [poly_to_fill[1], poly_to_fill[2], poly_to_fill[0], poly_to_fill[3]]
 
     return poly_to_ret
 
@@ -454,8 +454,9 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
     
     image_paths = glob.glob(img_dir + "/" + img_prefix + "*" + img_format)
 
-    objp = np.zeros(( 2 * 2,3), np.float32)
-    objp[:,:2] = np.mgrid[0:2, 0:2].T.reshape(-1,2)
+    objp = np.zeros(( 2 * 2,2), np.float32)
+    objp[:,:2] = np.mgrid[50:201:150, 50:201:150].T.reshape(-1,2)
+    
 
     objpoints = []
     imgpoints = []
@@ -479,7 +480,13 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
         print ("imgp[3,0]: %s" %str(imgp[3,1]))
         print ("Size of ret-img:  %s" %str(np.shape(ret_img)))
         # ret_img = ret_img[int(imgp[0,0]): int(imgp[2,0]), int(imgp[2,1]): int(imgp[3,1]), :]
-        ret_img = ret_img[int(imgp[0,0]): int(imgp[2,0]), :, :]
+        ret_img = ret_img[int(imgp[0,1]): int(imgp[2,1]), :, :]
+        imgp[:,1] = imgp[:,1] - imgp[0,1]
+        mat_pers = cv2.getPerspectiveTransform(imgp, objp)
+        affine_img = cv2.warpPerspective(ret_img, mat_pers, (250,250))
+        
+        write_name = img_dir + '/affine_' + img_suffix
+        cv2.imwrite(write_name, affine_img)
         imgpoints.append(imgp)
         print ("Size of ret-img-cropped:  %s" %str(np.shape(ret_img)))
         img_size = (int(ret_img.shape[0]), int(ret_img.shape[1]))
@@ -489,7 +496,7 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
     print ("Obj-points: %s" %str(objpoints))
 
     
-
+'''
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, img_size,None,None)
 
     # Now undistort the images. 
@@ -504,7 +511,7 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
         write_name = img_dir + '/crop_' + img_suffix
         cv2.imwrite(write_name, img)
 
-        
+ '''       
 
 
 
