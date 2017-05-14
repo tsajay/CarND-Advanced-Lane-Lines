@@ -36,6 +36,8 @@ def weighted_img(img, initial_img, alpha=0.8, beta=1., ro=0.):
     initial_img * α + img * β + λ
     NOTE: initial_img and img must be the same shape!
     """
+    print ("Final Img shape: %s" %str(img.shape))
+    print ("Orig  Img shape: %s" %str(initial_img.shape))
     return cv2.addWeighted(initial_img, alpha, img, beta, ro)
 
 def int_mid(coords):
@@ -173,14 +175,16 @@ def draw_lines(img, lines, color=[0, 0, 255], thickness=2):
     
     #for line in lines:
     #    for x1,y1,x2,y2 in line:
-    cv2.line(img, (left_bottom_x, img.shape[0]), (left_top_x, int(img.shape[0] * 0.62)), color, 8)
-    cv2.line(img, (right_bottom_x, img.shape[0]), (right_top_x, int(img.shape[0] * 0.62)), color, 8)
+    line_img = copy.deepcopy(img)
+    cv2.line(line_img, (left_bottom_x, img.shape[0]), (left_top_x, int(img.shape[0] * 0.62)), color, 8)
+    cv2.line(line_img, (right_bottom_x, img.shape[0]), (right_top_x, int(img.shape[0] * 0.62)), color, 8)
     poly_to_fill = [(left_bottom_x, img.shape[0]), # left-bottom
                     (left_top_x, int(img.shape[0] * 0.62)), # left-top
                     (right_top_x, int(img.shape[0] * 0.62)), # right-top
                     (right_bottom_x, img.shape[0])] # right-bottom
+    
     cv2.fillPoly(img, np.int32( [ poly_to_fill ]), (0, 64, 0) )
-
+    
 
     poly_to_ret = [ (img.shape[0], left_bottom_x), # left-bottom
                     (int(img.shape[0] * 0.62), left_top_x), # left-top
@@ -189,7 +193,7 @@ def draw_lines(img, lines, color=[0, 0, 255], thickness=2):
 
     poly_to_ret = [poly_to_fill[1], poly_to_fill[2], poly_to_fill[0], poly_to_fill[3]]
 
-    return poly_to_ret
+    return poly_to_ret, img
 
 def region_of_interest(img, vertices):
     """ 
@@ -223,13 +227,13 @@ def hough_lines(img, rho, theta, threshold, min_line_len, max_line_gap):
     """
     lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)
     line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
-    poly = draw_lines(line_img, lines)
+    poly, line_img = draw_lines(line_img, lines)
     return poly, line_img
 
 
-def draw_lines_on_image(image, img_dir, img_suffix, img_format):
+def draw_lines_on_image(image, img_dir, img_suffix, img_format, is_rgb_lines=False):
     ## Copy-paste from quiz.
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    gray = image # cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
    
 
     ret, bin_thresh = cv2.threshold(gray, 160, 255, cv2.THRESH_BINARY)
@@ -249,7 +253,7 @@ def draw_lines_on_image(image, img_dir, img_suffix, img_format):
 
     # This time we are defining a four sided polygon to mask
     imshape = image.shape
-    vertices = np.array([[(imshape[1] *0.48, imshape[0] * 0.62),(imshape[1] * 0.52, imshape[0] * 0.62),            (imshape[1] * 1. , imshape[0]), (imshape[1] * 0.0, imshape[0])]], dtype=np.int32)
+    vertices = np.array([[(imshape[1] *0.4, imshape[0] * 0.65),(imshape[1] * 0.6, imshape[0] * 0.65),            (imshape[1] * 1. , imshape[0] * 0.85), (imshape[1] * 0.0, imshape[0]* 0.85)]], dtype=np.int32)
     masked_edges = region_of_interest(edges, vertices)
     
 
@@ -258,21 +262,37 @@ def draw_lines_on_image(image, img_dir, img_suffix, img_format):
     rho = 1 # distance resolution in pixels of the Hough grid
     theta = np.pi/180 # angular resolution in radians of the Hough grid
     threshold = 20     # minimum number of votes (intersections in Hough grid cell)
-    min_line_length = 2 #minimum number of pixels making up a line
-    max_line_gap = 350    # maximum gap in pixels between connectable line segments
+    min_line_length = 50 #minimum number of pixels making up a line
+    max_line_gap = 250    # maximum gap in pixels between connectable line segments
     line_image = np.copy(image)*0 # creating a blank to draw lines on
 
     # Run Hough on edge detected image
     # Output "lines" is an array containing endpoints of detected line segments
     poly, line_image = hough_lines(masked_edges, rho, theta, threshold, min_line_length, max_line_gap)
+
+    cv2.imwrite(img_dir + "/__green__" + img_suffix + "." +img_format, line_image)
+
     
     # Iterate over the output "lines" and draw lines on a blank image
 
     # Create a "color" binary image to combine with line image
     color_edges = np.dstack((line_image, line_image, line_image)) 
+    # line_image[:,:,2] = 0
+    # line_image[:,:,0] = np.uint8(((line_image[:,:,0] + line_image[:,:,0] * 0.5) / 1.5))
+    # line_image[:,:,1] = 0
+    print("Line-image shape %s" %str(line_image.shape))
+    # n_line_img = np.uint8(((line_image[:,:,0] * 2 + line_image[:,:,1] * 1.5) / 3.5) / 255.0)
+    # n_line_img = np.reshape(n_line_img, (n_line_img.shape[0], n_line_img.shape[1], 1))
+    # color_edges = np.dstack((n_line_img, n_line_img, n_line_img)) 
+    # print("New-image shape %s" %str(n_line_img.shape))
+    if (is_rgb_lines):
+        line_image = cv2.cvtColor(line_image, cv2.COLOR_RGB2GRAY)
 
     # Draw the lines on the edge image
     lines_edges = weighted_img(line_image, image, 0.8,  1, 0) 
+
+    #lines_edges = weighted_img(color_edges, image, 0.8,  1, 0) 
+    
 
     plt.imshow(lines_edges)
     cv2.imwrite(img_dir + "/__lane__" + img_suffix + "." +img_format, lines_edges)
@@ -422,10 +442,17 @@ def process_test_images(test_img_dir, img_prefix, img_format, mtx, dist):
         img_size = (img.shape[0], img.shape[1])
 
         r_channel_img = img[:,:,0]
+        g_channel_img = img[:,:,1]
         hls_img = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
         s_channel_img = img[:,:,2]
-        s_thresh = (40, 100)
-        r_thresh = (80, 100)
+        # s_channel_img = img[:,:,2]
+        s_thresh = (80, 200)
+        r_thresh = (40, 255)
+
+        binary_rg = np.zeros_like(s_channel_img)
+        binary_rg[(r_channel_img > r_thresh[0]) & (r_channel_img <= r_thresh[1])
+                  & (g_channel_img > r_thresh[0]) & (g_channel_img <= r_thresh[1])] = 255
+
         binary_s = np.zeros_like(s_channel_img)
         binary_s[(s_channel_img > s_thresh[0]) & (s_channel_img <= s_thresh[1])] = 255
         write_name = test_img_dir + '/s_thresh_' + img_suffix
@@ -434,13 +461,15 @@ def process_test_images(test_img_dir, img_prefix, img_format, mtx, dist):
 
         binary_r = np.zeros_like(s_channel_img)
         binary_r[(r_channel_img > r_thresh[0]) & (r_channel_img <= r_thresh[1])] = 255
-        write_name = test_img_dir + '/red_thresh_' + img_suffix
+        write_name = test_img_dir + '/rg_thresh_' + img_suffix
         print("New image: %s" %write_name)
-        cv2.imwrite(write_name, binary_r)
+        cv2.imwrite(write_name, binary_rg)
 
         #mag_thresh_s = mag_threshold(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY), sobel_kernel=9, mag_thresh=(40,100), single_channel=True) * 255
-        mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100), single_channel=True) * 255
+        #mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100) , single_channel=True) * 255
+        mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100)) * 255
         write_name = test_img_dir + '/mag_thresh_' + img_suffix
+        draw_lines_on_image(mag_thresh_s, test_img_dir, img_suffix, img_format)
         print("New image: %s" %write_name)
         cv2.imwrite(write_name, mag_thresh_s)
 
@@ -465,12 +494,55 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
 
     imgs = []
 
+    mtx, dist = get_undistort_mtx_and_coeffs(img_dir="camera_cal", img_prefix="calibration", img_format="jpg", nx=9, ny=6)  
+
     for idx, image_path in enumerate(image_paths):
         img = cv2.imread(image_path)
+        img = cv2.undistort(img, mtx, dist, None, mtx)
         img_suffix = image_path[image_path.find(img_prefix) + len(img_prefix):len(image_path)]
         imgp = np.zeros((4,2), np.float32)
         objpoints.append(objp)
-        ret_poly, ret_img = draw_lines_on_image(img, img_dir, img_suffix, img_format)
+
+        ## 
+        
+        r_channel_img = img[:,:,0]
+        g_channel_img = img[:,:,1]
+        hls_img = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+        s_channel_img = hls_img[:,:,2]
+        # s_channel_img = img[:,:,2]
+        s_thresh = (40, 200)
+        r_thresh = (120, 255)
+        binary_s = np.zeros_like(s_channel_img)
+        binary_s[(s_channel_img > s_thresh[0]) & (s_channel_img <= s_thresh[1])] = 255
+        write_name = img_dir + '/s_thresh_' + img_suffix
+        print("New image: %s" %write_name)
+        cv2.imwrite(write_name, binary_s)
+
+        binary_r = np.zeros_like(s_channel_img)
+        binary_r[(r_channel_img > r_thresh[0]) & (r_channel_img <= r_thresh[1])] = 255
+        write_name = img_dir + '/red_thresh_' + img_suffix
+        print("New image: %s" %write_name)
+        cv2.imwrite(write_name, binary_r)
+
+        binary_rg = np.zeros_like(s_channel_img)
+        binary_rg[(r_channel_img > r_thresh[0]) & (r_channel_img <= r_thresh[1])
+                  & (g_channel_img > r_thresh[0]) & (g_channel_img <= r_thresh[1])] = 255
+        write_name = img_dir + '/rg_thresh_' + img_suffix
+        print("New image: %s" %write_name)
+        cv2.imwrite(write_name, binary_rg)
+
+        #mag_thresh_s = mag_threshold(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY), sobel_kernel=9, mag_thresh=(40,100), single_channel=True) * 255
+        #mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100) , single_channel=True) * 255
+        mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100)) * 255
+        write_name = img_dir + '/mag_thresh_' + img_suffix
+        print("New image: %s" %write_name)
+        cv2.imwrite(write_name, mag_thresh_s)
+        ##
+
+
+        #ret_poly, ret_img = draw_lines_on_image(img, img_dir, img_suffix, img_format)
+        color_edges = np.dstack((mag_thresh_s, mag_thresh_s, mag_thresh_s)) 
+        ret_poly, ret_img = draw_lines_on_image(color_edges, img_dir, img_suffix, img_format)
         
         imgp[:,:2] = np.array([ret_poly]).flatten().reshape(4, 2)
         print ("Imgp: %s" %str(imgp))
@@ -517,19 +589,20 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
 
 def main():
     args = parser.parse_args()
-    draw_lines_on_images(args.test_img_dir, img_prefix="straight_lines", img_format="jpg")
-    #draw_lines_on_images(args.test_img_dir, img_prefix="test", img_format="jpg")
+    #draw_lines_on_images(args.test_img_dir, img_prefix="straight_lines", img_format="jpg")
+    #draw_lines_on_images(args.test_img_dir, img_prefix="straight_lines", img_format="jpg")
+    draw_lines_on_images(args.test_img_dir, img_prefix="tryst", img_format="jpg")
 
     
 
 
-'''
-    mtx, dist = get_undistort_mtx_and_coeffs(img_dir="camera_cal", img_prefix="calibration", img_format="jpg", nx=9, ny=6)  
 
-    process_test_images(args.test_img_dir, img_prefix="test", img_format="jpg", mtx=mtx, dist=dist)
+    #mtx, dist = get_undistort_mtx_and_coeffs(img_dir="camera_cal", img_prefix="calibration", img_format="jpg", nx=9, ny=6)  
+
+    #process_test_images(args.test_img_dir, img_prefix="tryst", img_format="jpg", mtx=mtx, dist=dist)
 
     return 0
-    
+'''    
     combined = np.zeros_like(dir_binary)
     combined[((gradx == 1) & (grady == 1)) | ((mag_binary == 1) & (dir_binary == 1))] = 1
 
