@@ -263,7 +263,7 @@ def draw_lines_on_image(image, img_dir, img_suffix, img_format, is_rgb_lines=Fal
     theta = np.pi/180 # angular resolution in radians of the Hough grid
     threshold = 20     # minimum number of votes (intersections in Hough grid cell)
     min_line_length = 50 #minimum number of pixels making up a line
-    max_line_gap = 250    # maximum gap in pixels between connectable line segments
+    max_line_gap = 350    # maximum gap in pixels between connectable line segments
     line_image = np.copy(image)*0 # creating a blank to draw lines on
 
     # Run Hough on edge detected image
@@ -508,6 +508,8 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
         r_channel_img = img[:,:,0]
         g_channel_img = img[:,:,1]
         hls_img = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+        h_channel_img = hls_img[:,:,0]
+        l_channel_img = hls_img[:,:,1]
         s_channel_img = hls_img[:,:,2]
         # s_channel_img = img[:,:,2]
         s_thresh = (40, 200)
@@ -517,6 +519,21 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
         write_name = img_dir + '/s_thresh_' + img_suffix
         print("New image: %s" %write_name)
         cv2.imwrite(write_name, binary_s)
+
+
+        write_name = img_dir + '/h_channel_img' + img_suffix
+        print("New image: %s" %write_name)
+        cv2.imwrite(write_name, h_channel_img)
+
+        write_name = img_dir + '/l_channel_img' + img_suffix
+        print("New image: %s" %write_name)
+        cv2.imwrite(write_name, l_channel_img)
+
+        write_name = img_dir + '/s_channel_img' + img_suffix
+        print("New image: %s" %write_name)
+        cv2.imwrite(write_name, s_channel_img)
+
+
 
         binary_r = np.zeros_like(s_channel_img)
         binary_r[(r_channel_img > r_thresh[0]) & (r_channel_img <= r_thresh[1])] = 255
@@ -533,7 +550,8 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
 
         #mag_thresh_s = mag_threshold(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY), sobel_kernel=9, mag_thresh=(40,100), single_channel=True) * 255
         #mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100) , single_channel=True) * 255
-        mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100)) * 255
+        color_edges = np.dstack((s_channel_img, s_channel_img, s_channel_img)) 
+        mag_thresh_s = mag_threshold(color_edges, sobel_kernel=9, mag_thresh=(40,100)) * 255
         write_name = img_dir + '/mag_thresh_' + img_suffix
         print("New image: %s" %write_name)
         cv2.imwrite(write_name, mag_thresh_s)
