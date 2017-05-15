@@ -261,7 +261,7 @@ def draw_lines_on_image(image, img_dir, img_suffix, img_format, is_rgb_lines=Fal
     # Make a blank the same size as our image to draw on
     rho = 1 # distance resolution in pixels of the Hough grid
     theta = np.pi/180 # angular resolution in radians of the Hough grid
-    threshold = 20     # minimum number of votes (intersections in Hough grid cell)
+    threshold = 22     # minimum number of votes (intersections in Hough grid cell)
     min_line_length = 50 #minimum number of pixels making up a line
     max_line_gap = 350    # maximum gap in pixels between connectable line segments
     line_image = np.copy(image)*0 # creating a blank to draw lines on
