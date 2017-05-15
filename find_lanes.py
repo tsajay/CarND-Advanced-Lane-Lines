@@ -231,7 +231,7 @@ def hough_lines(img, rho, theta, threshold, min_line_len, max_line_gap):
     return poly, line_img
 
 
-def draw_lines_on_image(image, img_dir, img_suffix, img_format, is_rgb_lines=False):
+def draw_lines_on_image(orig_image, image, img_dir, img_suffix, img_format, is_rgb_lines=False):
     ## Copy-paste from quiz.
     gray = image # cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
    
@@ -289,7 +289,7 @@ def draw_lines_on_image(image, img_dir, img_suffix, img_format, is_rgb_lines=Fal
         line_image = cv2.cvtColor(line_image, cv2.COLOR_RGB2GRAY)
 
     # Draw the lines on the edge image
-    lines_edges = weighted_img(line_image, image, 0.8,  1, 0) 
+    lines_edges = weighted_img(line_image, orig_image, 0.8,  1, 0) 
 
     #lines_edges = weighted_img(color_edges, image, 0.8,  1, 0) 
     
@@ -555,12 +555,16 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
         write_name = img_dir + '/mag_thresh_' + img_suffix
         print("New image: %s" %write_name)
         cv2.imwrite(write_name, mag_thresh_s)
+
+
+
+        
         ##
 
 
         #ret_poly, ret_img = draw_lines_on_image(img, img_dir, img_suffix, img_format)
         color_edges = np.dstack((mag_thresh_s, mag_thresh_s, mag_thresh_s)) 
-        ret_poly, ret_img = draw_lines_on_image(color_edges, img_dir, img_suffix, img_format)
+        ret_poly, ret_img = draw_lines_on_image(img, color_edges, img_dir, img_suffix, img_format)
         
         imgp[:,:2] = np.array([ret_poly]).flatten().reshape(4, 2)
         print ("Imgp: %s" %str(imgp))
