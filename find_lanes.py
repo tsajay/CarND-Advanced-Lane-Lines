@@ -10,6 +10,11 @@ import matplotlib.pyplot as plt
 import cv2
 import glob
 import math
+from moviepy.editor import VideoFileClip
+
+import logging
+logging.basicConfig(level=logging.INFO)
+
 
 parser = argparse.ArgumentParser(description='Advanced lane finding project.')
 parser.add_argument('-c', '--cb_img_dir', default="./camera_cal", help='Chess-board images dir.')
@@ -21,8 +26,59 @@ parser.add_argument('-t', '--test_img_dir', default="test_images", help='Directo
 
 LEFT = 0
 RIGHT = 1
-DEBUG = 0
+DEBUG = 1
+VERBOSE = 0
+mtx = []
+dist = []
+image_prefix = ""
+image_format = "jpg"
+img_dir = "./test_images"
+img_index = 0
+objp = np.zeros(( 2 * 2,2), np.float32)
+objpoints = []
+imgpoints = []
+
 use_history = False
+hist_length = 7
+cur_len = 0
+weights = []
+left_bottom_hist = []
+left_top_hist = []
+right_bottom_hist = []
+right_top_hist = []
+
+LEFT = 0
+RIGHT = 1
+DEBUG = 0
+
+def reset_history():
+    '''
+    Reset history. Call this before processing a new video.
+    '''
+    global left_bottom_hist
+    global left_top_hist
+    global right_bottom_hist
+    global right_top_hist
+    cur_len = 0
+    left_bottom_hist[:] = []
+    left_top_hist[:] = []
+    right_bottom_hist[:] = []
+    right_top_hist[:] = []
+
+def weighted_avg(values, weights):
+    w_a = 0
+    for i in range(len(values)):
+        w_a += values[i] * weights[i]
+    return int(w_a)
+    
+def weighted_avg_hist(cur_val, val_hist, val_wt):
+    ret_val = cur_val
+    global cur_len
+    idx = len(val_hist) - 1
+    for i in range(cur_len):
+        ret_val += val_hist[idx - i] * val_wt[i]
+    return ret_val
+
 
 def weighted_img(img, initial_img, alpha=0.8, beta=1., ro=0.):
     """
@@ -36,8 +92,8 @@ def weighted_img(img, initial_img, alpha=0.8, beta=1., ro=0.):
     initial_img * α + img * β + λ
     NOTE: initial_img and img must be the same shape!
     """
-    print ("Final Img shape: %s" %str(img.shape))
-    print ("Orig  Img shape: %s" %str(initial_img.shape))
+    logging.debug("Final Img shape: %s" %str(img.shape))
+    logging.debug("Orig  Img shape: %s" %str(initial_img.shape))
     return cv2.addWeighted(initial_img, alpha, img, beta, ro)
 
 def int_mid(coords):
@@ -51,6 +107,7 @@ def int_mid(coords):
         return 0
 
 def prune_lines(bottom, top, weights, side, width):
+    global VERBOSE
     index = 0
     for (t, b) in zip(top, bottom):
         remove = False
@@ -62,8 +119,8 @@ def prune_lines(bottom, top, weights, side, width):
             if (t > b) or (t < width / 2) or (b < width / 2):
                 remove = True
         if (remove):
-            if (DEBUG):
-                print ("Removing noisy line: side=%d, width=%d (%d, %d)" %(side, width, t, b))
+            if (VERBOSE):
+                logging.debug ("Removing noisy line: side=%d, width=%d (%d, %d)" %(side, width, t, b))
             top.pop(index)
             bottom.pop(index)
             weights.pop(index)
@@ -147,10 +204,11 @@ def draw_lines(img, lines, color=[0, 0, 255], thickness=2):
     if (use_history):
         # Sanity check. If sanity check fails, and history is enabled, just use the previous frame's value.
         if (left_top_x > right_top_x or left_bottom_x > right_bottom_x 
-           or left_top_x < left_bottom_x or right_top_x > right_bottom_x):
+            or left_bottom_x <= 0 or right_bottom_x >= img.shape[1]-1 
+            or left_top_x < left_bottom_x or right_top_x > right_bottom_x):
             # Sanity check failed. Use previous frame's values  available
-            if (DEBUG):
-                print ("Sanity check failed: (lt, lb, rt, rb) = (%d, %d, %d, %d). Using history (%d, %d, %d, %d)"
+            #logging.warning ("Sanity check failed: (lt, lb, rt, rb) = (%d, %d, %d, %d). Using history (%d, %d, %d, %d)"
+            print ("Sanity check failed: (lt, lb, rt, rb) = (%d, %d, %d, %d). Using history (%d, %d, %d, %d)"
                    %(left_top_x, left_bottom_x, right_top_x, right_bottom_x, 
                      left_top_hist[-1], left_bottom_hist[-1], right_top_hist[-1], right_bottom_hist[-1]))
             left_top_x = left_top_hist[-1]
@@ -170,7 +228,6 @@ def draw_lines(img, lines, color=[0, 0, 255], thickness=2):
         right_top_hist.append(right_top_x)
         
         
-    
     
     
     #for line in lines:
@@ -270,33 +327,26 @@ def draw_lines_on_image(orig_image, image, img_dir, img_suffix, img_format, is_r
     # Output "lines" is an array containing endpoints of detected line segments
     poly, line_image = hough_lines(masked_edges, rho, theta, threshold, min_line_length, max_line_gap)
 
-    cv2.imwrite(img_dir + "/__green__" + img_suffix + "." +img_format, line_image)
+    # cv2.imwrite(img_dir + "/__green__" + img_suffix + "." +img_format, line_image)
 
     
     # Iterate over the output "lines" and draw lines on a blank image
 
     # Create a "color" binary image to combine with line image
     color_edges = np.dstack((line_image, line_image, line_image)) 
-    # line_image[:,:,2] = 0
-    # line_image[:,:,0] = np.uint8(((line_image[:,:,0] + line_image[:,:,0] * 0.5) / 1.5))
-    # line_image[:,:,1] = 0
-    print("Line-image shape %s" %str(line_image.shape))
-    # n_line_img = np.uint8(((line_image[:,:,0] * 2 + line_image[:,:,1] * 1.5) / 3.5) / 255.0)
-    # n_line_img = np.reshape(n_line_img, (n_line_img.shape[0], n_line_img.shape[1], 1))
-    # color_edges = np.dstack((n_line_img, n_line_img, n_line_img)) 
-    # print("New-image shape %s" %str(n_line_img.shape))
-    if (is_rgb_lines):
-        line_image = cv2.cvtColor(line_image, cv2.COLOR_RGB2GRAY)
 
-    # Draw the lines on the edge image
-    lines_edges = weighted_img(line_image, orig_image, 0.8,  1, 0) 
-
-    #lines_edges = weighted_img(color_edges, image, 0.8,  1, 0) 
+    logging.debug("Line-image shape %s" %str(line_image.shape))
     
 
-    plt.imshow(lines_edges)
-    cv2.imwrite(img_dir + "/__lane__" + img_suffix + "." +img_format, lines_edges)
-    return poly, lines_edges
+    # Draw the lines on the original image
+    lines_edges = weighted_img(line_image, orig_image, 0.8,  1, 0) 
+    
+    # Draw the lines on the threshold image image
+    thresh_edges = weighted_img(line_image, image, 0.8,  1, 0) 
+
+    # cv2.imwrite(img_dir + "/__lane__" + img_suffix + "." +img_format, lines_edges)
+    # cv2.imwrite(img_dir + "/__thresh__" + img_suffix + "." +img_format, thresh_edges)
+    return poly, lines_edges, thresh_edges
 
 
 '''
@@ -312,7 +362,7 @@ Returns mtx, dist : Distortion matrix and coefficient
 def get_undistort_mtx_and_coeffs(img_dir, img_prefix, img_format, nx, ny):
 
     if (not os.path.isdir(img_dir)):
-        print ("Unable to access images dir (%s). Require a valid image dir for camera calibration." %img_dir)
+        logging.error("Unable to access images dir (%s). Require a valid image dir for camera calibration." %img_dir)
         exit(1)
     
     objp = np.zeros(( nx * ny,3), np.float32)
@@ -342,10 +392,10 @@ def get_undistort_mtx_and_coeffs(img_dir, img_prefix, img_format, nx, ny):
             write_name = img_dir + '/corners_' + img_suffix
             cv2.imwrite(write_name, img)
         else:
-            print ("Unable to find CB corners for image %s. Skipping" %image_path)
+            logging.warning ("Unable to find CB corners for image %s. Skipping" %image_path)
             continue
 
-    print ("OBJP: %s" %str(objpoints))
+    logging.debug("OBJP: %s" %str(objpoints))
     # print ("IMGP: %s" %str(imgpoints))
 
     # Do camera calibration given object points and image points
@@ -425,83 +475,13 @@ def dir_threshold(img, sobel_kernel=3, thresh=(0, np.pi/2)):
     # Return the binary image
     return binary_output
 
-def process_test_images(test_img_dir, img_prefix, img_format, mtx, dist):
 
-    if (not os.path.isdir(test_img_dir)):
-        print ("Unable to access images dir (%s). Require a valid image dir for camera calibration." %test_img_dir)
-        exit(1)
-    
-    
-    image_paths = glob.glob(test_img_dir + "/" + img_prefix + "*" + img_format)
-
-    for idx, image_path in enumerate(image_paths):
-        print ("Here")
-        img = cv2.imread(image_path)
+def process_image(img):
+        global img_index, image_format, img_dir, objp
         img = cv2.undistort(img, mtx, dist, None, mtx)
-        img_suffix = image_path[image_path.rfind(img_prefix) + len(img_prefix):len(image_path)]
-        img_size = (img.shape[0], img.shape[1])
-
-        r_channel_img = img[:,:,0]
-        g_channel_img = img[:,:,1]
-        hls_img = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
-        s_channel_img = img[:,:,2]
-        # s_channel_img = img[:,:,2]
-        s_thresh = (80, 200)
-        r_thresh = (40, 255)
-
-        binary_rg = np.zeros_like(s_channel_img)
-        binary_rg[(r_channel_img > r_thresh[0]) & (r_channel_img <= r_thresh[1])
-                  & (g_channel_img > r_thresh[0]) & (g_channel_img <= r_thresh[1])] = 255
-
-        binary_s = np.zeros_like(s_channel_img)
-        binary_s[(s_channel_img > s_thresh[0]) & (s_channel_img <= s_thresh[1])] = 255
-        write_name = test_img_dir + '/s_thresh_' + img_suffix
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, binary_s)
-
-        binary_r = np.zeros_like(s_channel_img)
-        binary_r[(r_channel_img > r_thresh[0]) & (r_channel_img <= r_thresh[1])] = 255
-        write_name = test_img_dir + '/rg_thresh_' + img_suffix
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, binary_rg)
-
-        #mag_thresh_s = mag_threshold(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY), sobel_kernel=9, mag_thresh=(40,100), single_channel=True) * 255
-        #mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100) , single_channel=True) * 255
-        mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100)) * 255
-        write_name = test_img_dir + '/mag_thresh_' + img_suffix
-        draw_lines_on_image(mag_thresh_s, test_img_dir, img_suffix, img_format)
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, mag_thresh_s)
-
-        
-
-def draw_lines_on_images(img_dir, img_prefix, img_format):
-    if (not os.path.isdir(img_dir)):
-        print ("Unable to access images dir (%s). Require a valid image dir for camera calibration." %img_dir)
-        exit(1)
-    
-    
-    image_paths = glob.glob(img_dir + "/" + img_prefix + "*" + img_format)
-
-    objp = np.zeros(( 2 * 2,2), np.float32)
-    objp[:,:2] = np.mgrid[50:201:150, 50:201:150].T.reshape(-1,2)
-    
-
-    objpoints = []
-    imgpoints = []
-
-    img_size = (2,2)
-
-    imgs = []
-
-    mtx, dist = get_undistort_mtx_and_coeffs(img_dir="camera_cal", img_prefix="calibration", img_format="jpg", nx=9, ny=6)  
-
-    for idx, image_path in enumerate(image_paths):
-        img = cv2.imread(image_path)
-        img = cv2.undistort(img, mtx, dist, None, mtx)
-        img_suffix = image_path[image_path.find(img_prefix) + len(img_prefix):len(image_path)]
+        # img_suffix = image_path[image_path.find(img_prefix) + len(img_prefix):len(image_path)]
+        img_suffix =  "_" + str(img_index) + "." + image_format
         imgp = np.zeros((4,2), np.float32)
-        objpoints.append(objp)
 
         ## 
         
@@ -517,62 +497,55 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
         binary_s = np.zeros_like(s_channel_img)
         binary_s[(s_channel_img > s_thresh[0]) & (s_channel_img <= s_thresh[1])] = 255
         write_name = img_dir + '/s_thresh_' + img_suffix
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, binary_s)
+        logging.debug("New image: %s" %write_name)
+        #cv2.imwrite(write_name, binary_s)
 
 
         write_name = img_dir + '/h_channel_img' + img_suffix
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, h_channel_img)
+        logging.debug("New image: %s" %write_name)
+        #cv2.imwrite(write_name, h_channel_img)
 
         write_name = img_dir + '/l_channel_img' + img_suffix
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, l_channel_img)
+        logging.debug("New image: %s" %write_name)
+        #cv2.imwrite(write_name, l_channel_img)
 
         write_name = img_dir + '/s_channel_img' + img_suffix
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, s_channel_img)
+        logging.debug("New image: %s" %write_name)
+        #cv2.imwrite(write_name, s_channel_img)
 
 
 
         binary_r = np.zeros_like(s_channel_img)
         binary_r[(r_channel_img > r_thresh[0]) & (r_channel_img <= r_thresh[1])] = 255
         write_name = img_dir + '/red_thresh_' + img_suffix
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, binary_r)
+        logging.debug("New image: %s" %write_name)
+        # cv2.imwrite(write_name, binary_r)
 
         binary_rg = np.zeros_like(s_channel_img)
         binary_rg[(r_channel_img > r_thresh[0]) & (r_channel_img <= r_thresh[1])
                   & (g_channel_img > r_thresh[0]) & (g_channel_img <= r_thresh[1])] = 255
         write_name = img_dir + '/rg_thresh_' + img_suffix
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, binary_rg)
+        logging.debug("New image: %s" %write_name)
+        #cv2.imwrite(write_name, binary_rg)
 
-        #mag_thresh_s = mag_threshold(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY), sobel_kernel=9, mag_thresh=(40,100), single_channel=True) * 255
-        #mag_thresh_s = mag_threshold(hls_img, sobel_kernel=9, mag_thresh=(40,100) , single_channel=True) * 255
+
         color_edges = np.dstack((s_channel_img, s_channel_img, s_channel_img)) 
-        mag_thresh_s = mag_threshold(color_edges, sobel_kernel=9, mag_thresh=(40,100)) * 255
+        mag_thresh_s = mag_threshold(color_edges, sobel_kernel=11, mag_thresh=(40,100)) * 255
         write_name = img_dir + '/mag_thresh_' + img_suffix
-        print("New image: %s" %write_name)
-        cv2.imwrite(write_name, mag_thresh_s)
-
-
+        logging.debug("New image: %s" %write_name)
+        #cv2.imwrite(write_name, mag_thresh_s)
 
         
-        ##
-
-
-        #ret_poly, ret_img = draw_lines_on_image(img, img_dir, img_suffix, img_format)
         color_edges = np.dstack((mag_thresh_s, mag_thresh_s, mag_thresh_s)) 
-        ret_poly, ret_img = draw_lines_on_image(img, color_edges, img_dir, img_suffix, img_format)
+        ret_poly, orig_ret_img, ret_img  = draw_lines_on_image(img, color_edges, img_dir, img_suffix, image_format)
         
         imgp[:,:2] = np.array([ret_poly]).flatten().reshape(4, 2)
-        print ("Imgp: %s" %str(imgp))
-        print ("imgp[0,1]: %s" %str(imgp[2,0]))
-        print ("imgp[2,1] - imgp[0,1] + 1: %s" %str(imgp[1,0] - imgp[2,0] - 1))
-        print ("imgp[2,0]: %s" %str(imgp[1,1]))
-        print ("imgp[3,0]: %s" %str(imgp[3,1]))
-        print ("Size of ret-img:  %s" %str(np.shape(ret_img)))
+        logging.debug ("Imgp: %s" %str(imgp))
+        logging.debug ("imgp[0,1]: %s" %str(imgp[2,0]))
+        logging.debug ("imgp[2,1] - imgp[0,1] + 1: %s" %str(imgp[1,0] - imgp[2,0] - 1))
+        logging.debug ("imgp[2,0]: %s" %str(imgp[1,1]))
+        logging.debug ("imgp[3,0]: %s" %str(imgp[3,1]))
+        logging.debug ("Size of ret-img:  %s" %str(np.shape(ret_img)))
         # ret_img = ret_img[int(imgp[0,0]): int(imgp[2,0]), int(imgp[2,1]): int(imgp[3,1]), :]
         ret_img = ret_img[int(imgp[0,1]): int(imgp[2,1]), :, :]
         imgp[:,1] = imgp[:,1] - imgp[0,1]
@@ -580,57 +553,72 @@ def draw_lines_on_images(img_dir, img_prefix, img_format):
         affine_img = cv2.warpPerspective(ret_img, mat_pers, (250,250))
         
         write_name = img_dir + '/affine_' + img_suffix
-        cv2.imwrite(write_name, affine_img)
-        imgpoints.append(imgp)
-        print ("Size of ret-img-cropped:  %s" %str(np.shape(ret_img)))
+        #cv2.imwrite(write_name, affine_img)
+        logging.debug ("Size of ret-img-cropped:  %s" %str(np.shape(ret_img)))
         img_size = (int(ret_img.shape[0]), int(ret_img.shape[1]))
-        imgs.append(ret_img)
+        imgpoints.append(imgp)
+        objpoints.append(objp)
+        img_index = img_index + 1
 
-    print ("Img-points: %s" %str(imgpoints))
-    print ("Obj-points: %s" %str(objpoints))
+
+        # imgs.append(ret_img)
+        return orig_ret_img
+        # return ret_img
+        
+
+
+def draw_lines_on_images(img_d, img_pr, img_fmt):
+
+    global mtx, dist, image_prefix, image_format, objp, objpoints, imgpoints, use_history
+
+    img_dir = img_d
+    if (not os.path.isdir(img_dir)):
+        logging.error ("Unable to access images dir (%s). Require a valid image dir for camera calibration." %img_dir)
+        exit(1)
+    
+    
+    image_paths = glob.glob(img_dir + "/" + img_pr + "*" + img_fmt)
 
     
-'''
-    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, img_size,None,None)
+    objp[:,:2] = np.mgrid[50:201:150, 50:201:150].T.reshape(-1,2)
+    
 
-    # Now undistort the images. 
-    index = 0
+
+    img_size = (2,2)
+
+
+    mtx, dist = get_undistort_mtx_and_coeffs(img_dir="camera_cal", img_prefix="calibration", img_format="jpg", nx=9, ny=6)  
+
+    image_prefix = img_pr
+    image_format = img_fmt
+
+    input_clip = VideoFileClip("project_video.mp4")
+    use_history = True
+    # reset_history()
+    lane_clip = input_clip.fl_image(process_image) #NOTE: this function expects color images!!
+    lane_clip.write_videofile("project_res_video.mp4", audio=False)
+    use_history = False
+    
+    '''
+
     for idx, image_path in enumerate(image_paths):
-        img = imgs[index]
-        index += 1 
-        img_suffix = image_path[image_path.find(img_prefix) + len(img_prefix):len(image_path)]
-        dst = cv2.undistort(img, mtx, dist, None, mtx)
-        write_name = img_dir + '/correct_persp' + img_suffix
-        cv2.imwrite(write_name, dst)
-        write_name = img_dir + '/crop_' + img_suffix
-        cv2.imwrite(write_name, img)
+        img = cv2.imread(image_path)
+        imgp = process_image(img)
+    
+    logging.debug ("Img-points: %s" %str(imgpoints))
+    logging.debug ("Obj-points: %s" %str(objpoints))
+    '''
 
- '''       
-
+    
 
 
 def main():
     args = parser.parse_args()
-    #draw_lines_on_images(args.test_img_dir, img_prefix="straight_lines", img_format="jpg")
-    #draw_lines_on_images(args.test_img_dir, img_prefix="straight_lines", img_format="jpg")
-    draw_lines_on_images(args.test_img_dir, img_prefix="tryst", img_format="jpg")
+    draw_lines_on_images(args.test_img_dir, img_pr="tryst", img_fmt="jpg")
+    return 0
 
     
-
-
-
-    #mtx, dist = get_undistort_mtx_and_coeffs(img_dir="camera_cal", img_prefix="calibration", img_format="jpg", nx=9, ny=6)  
-
-    #process_test_images(args.test_img_dir, img_prefix="tryst", img_format="jpg", mtx=mtx, dist=dist)
-
-    return 0
-'''    
-    combined = np.zeros_like(dir_binary)
-    combined[((gradx == 1) & (grady == 1)) | ((mag_binary == 1) & (dir_binary == 1))] = 1
-
-
-    mtx, dist = get_undistort_mtx_and_coeffs(args.cb_img_dir, args.img_prefix, args.img_format, args.nx, args.ny)
-'''
+    
 
 if __name__ == "__main__":
     main()
